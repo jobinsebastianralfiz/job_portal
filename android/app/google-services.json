@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "891464398638",
+    "project_id": "jobportal-9d822",
+    "storage_bucket": "jobportal-9d822.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:891464398638:android:ddd09a72245065ce792cbf",
+        "android_client_info": {
+          "package_name": "com.ralfiz.job_portal"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDpvlC3poR96GEypPk3oYYmDZy7wQbngzs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
