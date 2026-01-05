@@ -256,6 +256,27 @@ class ResumeParserService {
   /// Extract text from various file formats
   Future<String?> _extractTextFromFile(File file) async {
     try {
+      // Check if file exists first
+      if (!await file.exists()) {
+        debugPrint('File does not exist: ${file.path}');
+
+        // Try to copy file to a stable location if it's a content URI issue
+        final tempDir = await getTemporaryDirectory();
+        final fileName = file.path.split('/').last;
+        final stablePath = '${tempDir.path}/resume_$fileName';
+
+        try {
+          // Try to read bytes directly and save to stable path
+          final bytes = await file.readAsBytes();
+          final stableFile = File(stablePath);
+          await stableFile.writeAsBytes(bytes);
+          return await _extractTextFromFile(stableFile);
+        } catch (e) {
+          debugPrint('Could not copy file: $e');
+          return null;
+        }
+      }
+
       final extension = file.path.split('.').last.toLowerCase();
 
       switch (extension) {
@@ -282,8 +303,24 @@ class ResumeParserService {
   /// Extract text from PDF file using Syncfusion PDF
   Future<String?> _extractTextFromPdf(File file) async {
     try {
+      debugPrint('Attempting to read PDF from: ${file.path}');
+
+      // Check if file exists
+      if (!await file.exists()) {
+        debugPrint('PDF file does not exist at path: ${file.path}');
+        return null;
+      }
+
       final bytes = await file.readAsBytes();
+      debugPrint('Read ${bytes.length} bytes from PDF');
+
+      if (bytes.isEmpty) {
+        debugPrint('PDF file is empty');
+        return null;
+      }
+
       final document = PdfDocument(inputBytes: bytes);
+      debugPrint('PDF has ${document.pages.count} pages');
 
       final StringBuffer textBuffer = StringBuffer();
 
@@ -296,7 +333,11 @@ class ResumeParserService {
       }
 
       document.dispose();
-      return textBuffer.toString().trim();
+
+      final extractedText = textBuffer.toString().trim();
+      debugPrint('Extracted ${extractedText.length} characters from PDF');
+
+      return extractedText;
     } catch (e) {
       debugPrint('Error extracting text from PDF: $e');
       return null;

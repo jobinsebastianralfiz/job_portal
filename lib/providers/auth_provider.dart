@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../models/user_model.dart';
 import '../core/constants/firebase_constants.dart';
+import '../services/firebase/notification_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
@@ -61,9 +62,26 @@ class AuthProvider extends ChangeNotifier {
           'userId': doc.id,
         });
         notifyListeners();
+
+        // Save FCM token for push notifications
+        _saveFcmToken(userId);
       }
     } catch (e) {
       debugPrint('Error loading user data: $e');
+    }
+  }
+
+  /// Save FCM token for push notifications
+  Future<void> _saveFcmToken(String userId) async {
+    try {
+      final notificationService = NotificationService();
+      final token = await notificationService.getFcmToken();
+      if (token != null) {
+        await notificationService.saveFcmToken(userId, token);
+        debugPrint('FCM token saved for user: $userId');
+      }
+    } catch (e) {
+      debugPrint('Error saving FCM token: $e');
     }
   }
 
@@ -270,13 +288,17 @@ class AuthProvider extends ChangeNotifier {
       _error = null;
       notifyListeners();
 
+      debugPrint('Sending password reset email to: $email');
       await _auth.sendPasswordResetEmail(email: email);
+      debugPrint('Password reset email sent successfully');
       return true;
     } on firebase_auth.FirebaseAuthException catch (e) {
+      debugPrint('FirebaseAuthException: ${e.code} - ${e.message}');
       _error = _getAuthErrorMessage(e.code);
       notifyListeners();
       return false;
     } catch (e) {
+      debugPrint('Error sending reset email: $e');
       _error = 'Failed to send reset email. Please try again.';
       notifyListeners();
       return false;

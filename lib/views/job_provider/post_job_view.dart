@@ -503,9 +503,51 @@ class _PostJobViewState extends State<PostJobView> {
     try {
       final authProvider = context.read<AuthProvider>();
       final jobProvider = context.read<JobProvider>();
+      final subscriptionProvider = context.read<SubscriptionProvider>();
       final user = authProvider.currentUser;
 
       if (user == null) return;
+
+      // Check job posting eligibility for new jobs (not edits or drafts)
+      if (!_isEdit && !asDraft) {
+        await subscriptionProvider.checkJobPostingEligibility(user.userId);
+        final eligibility = subscriptionProvider.jobPostingEligibility;
+
+        if (eligibility == null || eligibility['canPost'] != true) {
+          setState(() => _isLoading = false);
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: AppColors.warning),
+                    SizedBox(width: 8),
+                    Text('Posting Limit Reached'),
+                  ],
+                ),
+                content: Text(
+                  eligibility?['reason'] ?? 'You cannot post more jobs at this time.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('OK'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.pushNamed(context, '/subscription-plans');
+                    },
+                    child: const Text('Upgrade Plan'),
+                  ),
+                ],
+              ),
+            );
+          }
+          return;
+        }
+      }
 
       // Get company info
       final companyService = CompanyService();

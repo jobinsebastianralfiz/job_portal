@@ -118,16 +118,24 @@ class NotificationService {
         .toList();
   }
 
-  // Stream User Notifications
+  // Stream User Notifications (includes user-specific and broadcast notifications)
   Stream<List<NotificationModel>> streamUserNotifications(String userId, {int limit = 50}) {
+    // Get both user-specific notifications and broadcast notifications (userId = 'all')
     return _notifications
-        .where(FirebaseConstants.fieldUserId, isEqualTo: userId)
         .orderBy(FirebaseConstants.fieldCreatedAt, descending: true)
-        .limit(limit)
+        .limit(limit * 2) // Fetch more to filter client-side
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => NotificationModel.fromJson(doc.data() as Map<String, dynamic>))
-            .toList());
+        .map((snapshot) {
+          final allNotifications = snapshot.docs
+              .map((doc) => NotificationModel.fromJson(doc.data() as Map<String, dynamic>))
+              .where((notification) =>
+                  notification.userId == userId ||
+                  notification.userId == 'all' ||
+                  notification.userId.isEmpty)
+              .take(limit)
+              .toList();
+          return allNotifications;
+        });
   }
 
   // Get Unread Notifications Count
@@ -157,16 +165,23 @@ class NotificationService {
     });
   }
 
-  // Mark All as Read
+  // Mark All as Read (handles both user-specific and broadcast notifications)
   Future<void> markAllAsRead(String userId) async {
+    // Get all unread notifications
     final snapshot = await _notifications
-        .where(FirebaseConstants.fieldUserId, isEqualTo: userId)
         .where(FirebaseConstants.fieldIsRead, isEqualTo: false)
         .get();
 
     final batch = _db.batch();
     for (var doc in snapshot.docs) {
-      batch.update(doc.reference, {FirebaseConstants.fieldIsRead: true});
+      final data = doc.data() as Map<String, dynamic>;
+      final notificationUserId = data['userId'] as String? ?? '';
+      // Only mark as read if it's for this user or is a broadcast notification
+      if (notificationUserId == userId ||
+          notificationUserId == 'all' ||
+          notificationUserId.isEmpty) {
+        batch.update(doc.reference, {FirebaseConstants.fieldIsRead: true});
+      }
     }
     await batch.commit();
   }

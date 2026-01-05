@@ -1,8 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../providers/ai_provider.dart';
@@ -313,10 +314,30 @@ class _ParseResumeTabState extends State<_ParseResumeTab> {
     );
 
     if (result != null && result.files.single.path != null) {
-      setState(() {
-        _useExistingResume = false;
-      });
-      widget.onFileSelected(File(result.files.single.path!));
+      try {
+        // Copy file to a stable location to avoid cache issues
+        final originalFile = File(result.files.single.path!);
+        final bytes = await originalFile.readAsBytes();
+
+        final tempDir = await getTemporaryDirectory();
+        final fileName = result.files.single.name;
+        final stableFile = File('${tempDir.path}/resume_$fileName');
+        await stableFile.writeAsBytes(bytes);
+
+        debugPrint('File copied to stable path: ${stableFile.path}');
+
+        setState(() {
+          _useExistingResume = false;
+        });
+        widget.onFileSelected(stableFile);
+      } catch (e) {
+        debugPrint('Error copying file: $e');
+        // Fallback to original path
+        setState(() {
+          _useExistingResume = false;
+        });
+        widget.onFileSelected(File(result.files.single.path!));
+      }
     }
   }
 

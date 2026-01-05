@@ -6,8 +6,8 @@ import 'package:flutter/foundation.dart';
 class GeminiService {
   // IMPORTANT: Replace with your actual Gemini API key
   // Get your key from: https://makersuite.google.com/app/apikey
-  static const String _apiKey = 'AIzaSyBHfWQBFNGkCyNz8iH8WBHzWXANVWNzOes';
-  static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
+  static const String _apiKey = 'AIzaSyBsBnwiPcb7twvGi0qgcBEuU4uw846IlPs';
+  static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1';
 
   /// Parse resume text and extract structured information
   Future<ResumeParseResult?> parseResume(String resumeText) async {
@@ -469,7 +469,11 @@ $jobDescription
   /// Main API request method
   Future<String?> _makeRequest(String prompt) async {
     try {
+      // Use gemini-2.0-flash model
       final url = Uri.parse('$_baseUrl/models/gemini-2.0-flash:generateContent?key=$_apiKey');
+
+      debugPrint('Making Gemini API request...');
+      debugPrint('URL: $url');
 
       final response = await http.post(
         url,
@@ -509,6 +513,8 @@ $jobDescription
         }),
       );
 
+      debugPrint('Gemini API response status: ${response.statusCode}');
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final candidates = data['candidates'] as List?;
@@ -516,11 +522,14 @@ $jobDescription
           final content = candidates[0]['content'];
           final parts = content['parts'] as List?;
           if (parts != null && parts.isNotEmpty) {
+            debugPrint('Gemini API returned valid response');
             return parts[0]['text'] as String?;
           }
         }
+        debugPrint('Gemini API response had no valid candidates');
       } else {
-        debugPrint('Gemini API error: ${response.statusCode} - ${response.body}');
+        debugPrint('Gemini API error: ${response.statusCode}');
+        debugPrint('Response body: ${response.body}');
       }
 
       return null;
