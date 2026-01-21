@@ -232,8 +232,9 @@ class _SeekerProfileViewState extends State<SeekerProfileView> {
   }
 
   Future<void> _pickProfileImage(BuildContext context) async {
-    // Get user before any async operation
-    final user = context.read<AuthProvider>().currentUser;
+    // Get user and auth provider before any async operation
+    final authProvider = context.read<AuthProvider>();
+    final user = authProvider.currentUser;
     if (user == null) return;
 
     final picker = ImagePicker();
@@ -249,7 +250,13 @@ class _SeekerProfileViewState extends State<SeekerProfileView> {
       if (url != null && mounted) {
         final userService = UserService();
         await userService.updateProfile(userId: user.userId, profileImage: url);
-        // Reload user data
+        // Reload user data to show updated image
+        await authProvider.refreshUserData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Profile photo updated')),
+          );
+        }
       }
     }
   }

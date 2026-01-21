@@ -10,6 +10,7 @@ class UserModel {
   final String? profileImage;
   final bool isVerified;
   final bool isActive;
+  final String? status; // active, suspended, deleted
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -51,6 +52,7 @@ class UserModel {
     this.profileImage,
     required this.isVerified,
     required this.isActive,
+    this.status,
     required this.createdAt,
     required this.updatedAt,
     this.skills,
@@ -86,6 +88,7 @@ class UserModel {
       'profileImage': profileImage,
       'isVerified': isVerified,
       'isActive': isActive,
+      'status': status,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
       'skills': skills,
@@ -126,6 +129,7 @@ class UserModel {
       profileImage: json['profileImage'] as String?,
       isVerified: json['isVerified'] as bool? ?? false,
       isActive: json['isActive'] as bool? ?? true,
+      status: json['status'] as String?,
       createdAt: json['createdAt'] != null
           ? (json['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
@@ -175,6 +179,7 @@ class UserModel {
     String? profileImage,
     bool? isVerified,
     bool? isActive,
+    String? status,
     DateTime? createdAt,
     DateTime? updatedAt,
     List<String>? skills,
@@ -208,6 +213,7 @@ class UserModel {
       profileImage: profileImage ?? this.profileImage,
       isVerified: isVerified ?? this.isVerified,
       isActive: isActive ?? this.isActive,
+      status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       skills: skills ?? this.skills,
@@ -278,7 +284,6 @@ class UserModel {
   }
 
   // Compatibility getters for admin views
-  String get status => isActive ? 'active' : 'inactive';
   String? get phone => phoneNumber;
   bool get isEmailVerified => isVerified;
   DateTime? get lastLoginAt => updatedAt; // Using updatedAt as proxy

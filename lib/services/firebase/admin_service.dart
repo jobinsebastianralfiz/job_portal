@@ -154,6 +154,7 @@ class AdminService {
         query = query.where('role', isEqualTo: role);
       }
 
+      // Filter by status if specified
       if (status != null && status != 'all') {
         query = query.where('status', isEqualTo: status);
       }
@@ -171,6 +172,14 @@ class AdminService {
       List<UserModel> users = snapshot.docs
           .map((doc) => UserModel.fromJson({...doc.data() as Map<String, dynamic>, 'userId': doc.id}))
           .toList();
+
+      // Exclude deleted users unless specifically filtering for them
+      if (status != 'deleted') {
+        users = users.where((user) {
+          final userStatus = user.status;
+          return userStatus != 'deleted';
+        }).toList();
+      }
 
       // Filter by search query if provided
       if (searchQuery != null && searchQuery.isNotEmpty) {
@@ -233,16 +242,24 @@ class AdminService {
   }
 
   Future<bool> deleteUser(String userId) async {
+    // Safety check - don't delete if userId is empty
+    if (userId.isEmpty) {
+      print('Error: Cannot delete user - userId is empty');
+      return false;
+    }
+
     try {
-      // Soft delete - just mark as deleted
+      print('Soft-deleting user with ID: $userId');
+      // Soft delete - just mark as deleted (only affects this specific user)
       await _firestore.collection('users').doc(userId).update({
         'status': 'deleted',
         'deletedAt': DateTime.now().toIso8601String(),
         'updatedAt': DateTime.now().toIso8601String(),
       });
+      print('User $userId marked as deleted successfully');
       return true;
     } catch (e) {
-      print('Error deleting user: $e');
+      print('Error deleting user $userId: $e');
       return false;
     }
   }

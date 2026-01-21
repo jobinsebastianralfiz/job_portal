@@ -1,30 +1,28 @@
 import 'package:flutter/material.dart';
-import 'package:razorpay_flutter/razorpay_flutter.dart';
 import '../models/subscription_model.dart';
 import '../services/payment/subscription_service.dart';
 
 class SubscriptionProvider extends ChangeNotifier {
-  final SubscriptionService _subscriptionService = SubscriptionService();
+  final SubscriptionService _service = SubscriptionService();
 
   // State
   bool _isLoading = false;
+  bool _isPaymentInProgress = false;
   String? _error;
   UserSubscription? _currentSubscription;
-  List<UserSubscription> _subscriptionHistory = [];
   Map<String, dynamic>? _jobPostingEligibility;
 
   // Payment state
-  bool _isProcessingPayment = false;
   SubscriptionPlan? _selectedPlan;
   bool _isYearlyBilling = false;
+  String? _pendingUserId;
 
   // Getters
   bool get isLoading => _isLoading;
+  bool get isPaymentInProgress => _isPaymentInProgress;
   String? get error => _error;
   UserSubscription? get currentSubscription => _currentSubscription;
-  List<UserSubscription> get subscriptionHistory => _subscriptionHistory;
   Map<String, dynamic>? get jobPostingEligibility => _jobPostingEligibility;
-  bool get isProcessingPayment => _isProcessingPayment;
   SubscriptionPlan? get selectedPlan => _selectedPlan;
   bool get isYearlyBilling => _isYearlyBilling;
 
@@ -32,54 +30,45 @@ class SubscriptionProvider extends ChangeNotifier {
   bool get hasActiveSubscription => _currentSubscription?.isValid ?? false;
   SubscriptionTier get currentTier => _currentSubscription?.tier ?? SubscriptionTier.free;
   SubscriptionPlan get currentPlan => SubscriptionPlans.getPlan(currentTier);
-  bool get hasAIAccess => currentPlan.hasAIFeatures && hasActiveSubscription;
   bool get canPostJobs => _jobPostingEligibility?['canPost'] ?? false;
   int get remainingJobPosts => _jobPostingEligibility?['remaining'] ?? 0;
+  bool get hasAIAccess => currentPlan.hasAIFeatures && hasActiveSubscription;
 
-  /// Initialize Razorpay with callbacks
-  void initPayment({
-    required Function(String paymentId) onSuccess,
+  /// Initialize Razorpay for payments
+  void initializePayment({
+    required Function() onSuccess,
     required Function(String error) onError,
   }) {
-    _subscriptionService.initRazorpay(
-      onSuccess: (response) {
-        _handlePaymentSuccess(response, onSuccess);
+    _service.initializeRazorpay(
+      onSuccess: (paymentId, orderId) async {
+        debugPrint('Payment successful, creating subscription...');
+        await _completeSubscription(paymentId, orderId);
+        onSuccess();
       },
-      onError: (response) {
-        _handlePaymentError(response, onError);
+      onFailure: (errorMessage) {
+        debugPrint('Payment failed: $errorMessage');
+        _isPaymentInProgress = false;
+        _error = errorMessage;
+        notifyListeners();
+        onError(errorMessage);
       },
     );
   }
 
-  /// Dispose Razorpay
+  /// Dispose payment resources
   void disposePayment() {
-    _subscriptionService.dispose();
+    _service.dispose();
   }
 
-  /// Load current subscription for a user
+  /// Load current subscription
   Future<void> loadCurrentSubscription(String userId) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      _currentSubscription = await _subscriptionService.getCurrentSubscription(userId);
+      _currentSubscription = await _service.getCurrentSubscription(userId);
       await checkJobPostingEligibility(userId);
-    } catch (e) {
-      _error = e.toString();
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
-
-  /// Load subscription history
-  Future<void> loadSubscriptionHistory(String userId) async {
-    _isLoading = true;
-    notifyListeners();
-
-    try {
-      _subscriptionHistory = await _subscriptionService.getSubscriptionHistory(userId);
     } catch (e) {
       _error = e.toString();
     } finally {
@@ -91,32 +80,21 @@ class SubscriptionProvider extends ChangeNotifier {
   /// Check job posting eligibility
   Future<void> checkJobPostingEligibility(String userId) async {
     try {
-      _jobPostingEligibility = await _subscriptionService.checkJobPostingEligibility(userId);
+      _jobPostingEligibility = await _service.checkJobPostingEligibility(userId);
       notifyListeners();
     } catch (e) {
       _error = e.toString();
     }
   }
 
-  /// Select a plan for purchase
-  void selectPlan(SubscriptionPlan plan) {
-    _selectedPlan = plan;
-    notifyListeners();
-  }
-
-  /// Toggle yearly/monthly billing
-  void toggleBillingCycle() {
-    _isYearlyBilling = !_isYearlyBilling;
-    notifyListeners();
-  }
-
+  /// Set billing cycle
   void setBillingCycle(bool isYearly) {
     _isYearlyBilling = isYearly;
     notifyListeners();
   }
 
   /// Start subscription purchase
-  void purchaseSubscription({
+  void startPurchase({
     required String userId,
     required String userEmail,
     required String userName,
@@ -124,58 +102,39 @@ class SubscriptionProvider extends ChangeNotifier {
     required SubscriptionPlan plan,
   }) {
     _selectedPlan = plan;
-    _isProcessingPayment = true;
+    _pendingUserId = userId;
+    _isPaymentInProgress = true;
+    _error = null;
     notifyListeners();
 
-    _subscriptionService.startPayment(
-      userId: userId,
-      userEmail: userEmail,
+    final amount = _isYearlyBilling ? plan.priceYearly : plan.priceMonthly;
+    final description = '${plan.name} - ${_isYearlyBilling ? 'Yearly' : 'Monthly'}';
+
+    _service.openCheckout(
+      amountInPaise: amount,
+      description: description,
       userName: userName,
+      userEmail: userEmail,
       userPhone: userPhone,
-      plan: plan,
-      isYearly: _isYearlyBilling,
     );
   }
 
-  /// Handle successful payment
-  Future<void> _handlePaymentSuccess(
-    PaymentSuccessResponse response,
-    Function(String) onSuccess,
-  ) async {
-    if (_selectedPlan == null) {
-      _isProcessingPayment = false;
+  /// Complete subscription after successful payment
+  Future<void> _completeSubscription(String paymentId, String? orderId) async {
+    if (_selectedPlan == null || _pendingUserId == null) {
+      _isPaymentInProgress = false;
+      _error = 'Invalid subscription data';
       notifyListeners();
       return;
     }
-
-    try {
-      // Extract user ID from notes (you'd need to store this temporarily)
-      // For now, we'll handle this in the UI layer
-      onSuccess(response.paymentId ?? '');
-    } finally {
-      _isProcessingPayment = false;
-      notifyListeners();
-    }
-  }
-
-  /// Complete subscription after payment verification
-  Future<bool> completeSubscription({
-    required String userId,
-    required String paymentId,
-    String? orderId,
-  }) async {
-    if (_selectedPlan == null) return false;
-
-    _isLoading = true;
-    notifyListeners();
 
     try {
       final amount = _isYearlyBilling
           ? _selectedPlan!.priceYearly
           : _selectedPlan!.priceMonthly;
 
-      final subscription = await _subscriptionService.createSubscription(
-        userId: userId,
+      final subscription = await _service.createSubscription(
+        userId: _pendingUserId!,
         tier: _selectedPlan!.tier,
         isYearly: _isYearlyBilling,
         paymentId: paymentId,
@@ -185,11 +144,41 @@ class SubscriptionProvider extends ChangeNotifier {
 
       if (subscription != null) {
         _currentSubscription = subscription;
-        _selectedPlan = null;
+        await checkJobPostingEligibility(_pendingUserId!);
+      } else {
+        _error = 'Failed to activate subscription';
+      }
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _isPaymentInProgress = false;
+      _selectedPlan = null;
+      _pendingUserId = null;
+      notifyListeners();
+    }
+  }
+
+  /// Activate free plan (no payment needed)
+  Future<bool> activateFreePlan(String userId) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final subscription = await _service.createSubscription(
+        userId: userId,
+        tier: SubscriptionTier.free,
+        isYearly: false,
+        paymentId: 'free_${DateTime.now().millisecondsSinceEpoch}',
+        amountPaid: 0,
+      );
+
+      if (subscription != null) {
+        _currentSubscription = subscription;
         await checkJobPostingEligibility(userId);
-        notifyListeners();
         return true;
       }
+      _error = 'Failed to activate free plan';
       return false;
     } catch (e) {
       _error = e.toString();
@@ -200,17 +189,6 @@ class SubscriptionProvider extends ChangeNotifier {
     }
   }
 
-  /// Handle payment error
-  void _handlePaymentError(
-    PaymentFailureResponse response,
-    Function(String) onError,
-  ) {
-    _isProcessingPayment = false;
-    _error = response.message ?? 'Payment failed';
-    notifyListeners();
-    onError(_error!);
-  }
-
   /// Cancel subscription
   Future<bool> cancelSubscription(String reason) async {
     if (_currentSubscription == null) return false;
@@ -219,7 +197,7 @@ class SubscriptionProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final success = await _subscriptionService.cancelSubscription(
+      final success = await _service.cancelSubscription(
         _currentSubscription!.subscriptionId,
         reason,
       );
@@ -242,22 +220,17 @@ class SubscriptionProvider extends ChangeNotifier {
     }
   }
 
-  /// Check if user has access to a specific feature
-  bool hasFeatureAccess(String feature) {
-    if (!hasActiveSubscription) return false;
-    return currentPlan.hasFeature(feature);
-  }
-
   /// Clear error
   void clearError() {
     _error = null;
     notifyListeners();
   }
 
-  /// Clear selection
-  void clearSelection() {
+  /// Reset payment state (useful when user cancels or navigates away)
+  void resetPaymentState() {
+    _isPaymentInProgress = false;
     _selectedPlan = null;
-    _isYearlyBilling = false;
+    _pendingUserId = null;
     notifyListeners();
   }
 }

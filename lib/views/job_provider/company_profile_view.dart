@@ -609,15 +609,21 @@ class _CompanyProfileViewState extends State<CompanyProfileView> {
     final picker = ImagePicker();
     final image = await picker.pickImage(source: ImageSource.gallery);
 
-    if (image != null) {
+    if (image != null && mounted) {
       final file = File(image.path);
       final url = await _storageService.uploadCompanyLogo(
         file,
         _company!.companyId,
       );
 
-      if (url != null) {
+      if (url != null && mounted) {
         await _companyService.updateLogo(_company!.companyId, url);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Company logo updated'),
+            backgroundColor: AppColors.success,
+          ),
+        );
         _loadCompanyProfile();
       }
     }
@@ -641,10 +647,22 @@ class _CompanyProfileViewState extends State<CompanyProfileView> {
       }
 
       if (urls.isNotEmpty && _company != null) {
-        // Gallery is not tracked in the model currently
-        // Would need to extend CompanyModel or use a separate collection
+        // Merge with existing gallery images
+        final existingGallery = _company!.gallery ?? [];
+        final updatedGallery = [...existingGallery, ...urls];
+
+        final updatedCompany = _company!.copyWith(
+          gallery: updatedGallery,
+          updatedAt: DateTime.now(),
+        );
+
+        await _companyService.updateCompany(updatedCompany);
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Gallery images uploaded')),
+          const SnackBar(
+            content: Text('Gallery images uploaded'),
+            backgroundColor: AppColors.success,
+          ),
         );
         _loadCompanyProfile();
       }
@@ -870,17 +888,17 @@ class _EditCompanySheetState extends State<_EditCompanySheet> {
     _industryController = TextEditingController(text: widget.company.industry);
     _sizeController = TextEditingController(text: widget.company.size);
     _foundedController = TextEditingController(
-      text: widget.company.founded?.toString(),
+      text: widget.company.founded != null ? widget.company.founded.toString() : '',
     );
-    _typeController = TextEditingController(text: widget.company.type);
-    _headquartersController = TextEditingController(text: widget.company.headquarters);
+    _typeController = TextEditingController(text: widget.company.type ?? '');
+    _headquartersController = TextEditingController(text: widget.company.headquarters ?? '');
     _emailController = TextEditingController(text: widget.company.email);
-    _phoneController = TextEditingController(text: widget.company.phone);
-    _websiteController = TextEditingController(text: widget.company.website);
-    _linkedinController = TextEditingController(text: widget.company.linkedin);
-    _twitterController = TextEditingController(text: widget.company.twitter);
+    _phoneController = TextEditingController(text: widget.company.phone ?? '');
+    _websiteController = TextEditingController(text: widget.company.website ?? '');
+    _linkedinController = TextEditingController(text: widget.company.linkedin ?? '');
+    _twitterController = TextEditingController(text: widget.company.twitter ?? '');
     _benefitsController = TextEditingController(
-      text: widget.company.benefits?.join(', '),
+      text: widget.company.benefits?.join(', ') ?? '',
     );
   }
 
@@ -912,28 +930,31 @@ class _EditCompanySheetState extends State<_EditCompanySheet> {
       builder: (context, scrollController) => Column(
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             decoration: BoxDecoration(
               border: Border(bottom: BorderSide(color: AppColors.grey200)),
             ),
             child: Row(
               children: [
-                Text('Edit Company Profile', style: AppTextStyles.h5),
-                const Spacer(),
-                TextButton(
+                IconButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Cancel',
                 ),
                 const SizedBox(width: 8),
-                ElevatedButton(
+                Expanded(
+                  child: Text('Edit Company Profile', style: AppTextStyles.h5),
+                ),
+                IconButton(
                   onPressed: _isLoading ? null : _saveChanges,
-                  child: _isLoading
+                  icon: _isLoading
                       ? const SizedBox(
                           height: 20,
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Save'),
+                      : const Icon(Icons.check, color: AppColors.primary),
+                  tooltip: 'Save',
                 ),
               ],
             ),
@@ -1103,6 +1124,22 @@ class _EditCompanySheetState extends State<_EditCompanySheet> {
     setState(() => _isLoading = true);
 
     try {
+      // Parse founded year
+      int? foundedYear;
+      if (_foundedController.text.isNotEmpty) {
+        foundedYear = int.tryParse(_foundedController.text);
+      }
+
+      // Parse benefits list
+      List<String>? benefitsList;
+      if (_benefitsController.text.isNotEmpty) {
+        benefitsList = _benefitsController.text
+            .split(',')
+            .map((b) => b.trim())
+            .where((b) => b.isNotEmpty)
+            .toList();
+      }
+
       final updatedCompany = widget.company.copyWith(
         name: _nameController.text,
         description: _descriptionController.text.isNotEmpty
@@ -1114,6 +1151,13 @@ class _EditCompanySheetState extends State<_EditCompanySheet> {
         size: _sizeController.text.isNotEmpty
             ? _sizeController.text
             : widget.company.size,
+        founded: foundedYear ?? widget.company.founded,
+        type: _typeController.text.isNotEmpty
+            ? _typeController.text
+            : widget.company.type,
+        headquarters: _headquartersController.text.isNotEmpty
+            ? _headquartersController.text
+            : widget.company.headquarters,
         email: _emailController.text.isNotEmpty
             ? _emailController.text
             : widget.company.email,
@@ -1131,6 +1175,7 @@ class _EditCompanySheetState extends State<_EditCompanySheet> {
               ? _twitterController.text
               : widget.company.socialLinks?.twitter,
         ),
+        benefits: benefitsList ?? widget.company.benefits,
         updatedAt: DateTime.now(),
       );
 

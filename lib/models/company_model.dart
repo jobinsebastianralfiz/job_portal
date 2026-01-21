@@ -21,6 +21,11 @@ class CompanyModel {
   final List<String>? teamMembers;
   final int activeJobs;
   final int totalHires;
+  final int? founded;
+  final String? type;
+  final String? headquarters;
+  final List<String>? benefits;
+  final List<String>? gallery;
 
   CompanyModel({
     required this.companyId,
@@ -43,6 +48,11 @@ class CompanyModel {
     this.teamMembers,
     this.activeJobs = 0,
     this.totalHires = 0,
+    this.founded,
+    this.type,
+    this.headquarters,
+    this.benefits,
+    this.gallery,
   });
 
   Map<String, dynamic> toJson() {
@@ -67,6 +77,11 @@ class CompanyModel {
       'teamMembers': teamMembers,
       'activeJobs': activeJobs,
       'totalHires': totalHires,
+      'founded': founded,
+      'type': type,
+      'headquarters': headquarters,
+      'benefits': benefits,
+      'gallery': gallery,
     };
   }
 
@@ -100,6 +115,11 @@ class CompanyModel {
       teamMembers: (json['teamMembers'] as List<dynamic>?)?.cast<String>(),
       activeJobs: json['activeJobs'] as int? ?? 0,
       totalHires: json['totalHires'] as int? ?? 0,
+      founded: json['founded'] as int?,
+      type: json['type'] as String?,
+      headquarters: json['headquarters'] as String?,
+      benefits: (json['benefits'] as List<dynamic>?)?.cast<String>(),
+      gallery: (json['gallery'] as List<dynamic>?)?.cast<String>(),
     );
   }
 
@@ -124,6 +144,11 @@ class CompanyModel {
     List<String>? teamMembers,
     int? activeJobs,
     int? totalHires,
+    int? founded,
+    String? type,
+    String? headquarters,
+    List<String>? benefits,
+    List<String>? gallery,
   }) {
     return CompanyModel(
       companyId: companyId ?? this.companyId,
@@ -146,6 +171,11 @@ class CompanyModel {
       teamMembers: teamMembers ?? this.teamMembers,
       activeJobs: activeJobs ?? this.activeJobs,
       totalHires: totalHires ?? this.totalHires,
+      founded: founded ?? this.founded,
+      type: type ?? this.type,
+      headquarters: headquarters ?? this.headquarters,
+      benefits: benefits ?? this.benefits,
+      gallery: gallery ?? this.gallery,
     );
   }
 
@@ -157,15 +187,10 @@ class CompanyModel {
     return name.isNotEmpty ? name[0].toUpperCase() : '';
   }
 
-  // Compatibility getters for company_profile_view
+  // Compatibility getters
   int get totalJobs => activeJobs;
-  String? get founded => null; // Not tracked in current model
-  String? get type => industry;
-  String? get headquarters => location?.fullAddress;
   String? get linkedin => socialLinks?.linkedin;
   String? get twitter => socialLinks?.twitter;
-  List<String> get benefits => []; // Not tracked in current model
-  List<String> get gallery => []; // Not tracked in current model
 }
 
 class CompanyLocation {

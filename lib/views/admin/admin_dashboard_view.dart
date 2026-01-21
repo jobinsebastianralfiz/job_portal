@@ -109,7 +109,7 @@ class AdminDashboardView extends StatelessWidget {
                       physics: const NeverScrollableScrollPhysics(),
                       mainAxisSpacing: 12,
                       crossAxisSpacing: 12,
-                      childAspectRatio: 1.4,
+                      childAspectRatio: 1,
                       children: [
                         _StatCard(
                           title: 'Total Users',
@@ -146,7 +146,7 @@ class AdminDashboardView extends StatelessWidget {
                       physics: const NeverScrollableScrollPhysics(),
                       mainAxisSpacing: 12,
                       crossAxisSpacing: 12,
-                      childAspectRatio: 1.4,
+                      childAspectRatio: 1,
                       children: [
                         _StatCard(
                           title: 'Applications',
@@ -325,14 +325,14 @@ class _StatCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: color, size: 20),
@@ -345,7 +345,7 @@ class _StatCard extends StatelessWidget {
                 ),
             ],
           ),
-          const Spacer(),
+          const SizedBox(height: 12),
           Text(
             value,
             style: AppTextStyles.h3.copyWith(fontWeight: FontWeight.bold),
@@ -354,6 +354,8 @@ class _StatCard extends StatelessWidget {
           Text(
             title,
             style: AppTextStyles.caption,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

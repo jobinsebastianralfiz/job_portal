@@ -14,18 +14,30 @@ import 'seeker_profile_view.dart';
 import 'saved_jobs_view.dart';
 
 class SeekerMainView extends StatefulWidget {
-  const SeekerMainView({super.key});
+  final int initialTab;
+
+  const SeekerMainView({super.key, this.initialTab = 0});
+
+  /// Static key to access state from anywhere in the widget tree
+  static final GlobalKey<SeekerMainViewState> globalKey = GlobalKey<SeekerMainViewState>();
 
   @override
-  State<SeekerMainView> createState() => _SeekerMainViewState();
+  State<SeekerMainView> createState() => SeekerMainViewState();
 }
 
-class _SeekerMainViewState extends State<SeekerMainView> {
+class SeekerMainViewState extends State<SeekerMainView> {
   int _currentIndex = 0;
+
+  void switchToTab(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
 
   @override
   void initState() {
     super.initState();
+    _currentIndex = widget.initialTab;
     // Schedule the data loading after the first frame to avoid calling
     // notifyListeners during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -177,10 +189,8 @@ class _SeekerHomePage extends StatelessWidget {
                     GestureDetector(
                       onTap: () {
                         // Switch to search tab
-                        final state = context.findAncestorStateOfType<_SeekerMainViewState>();
-                        state?.setState(() {
-                          state._currentIndex = 1;
-                        });
+                        final state = context.findAncestorStateOfType<SeekerMainViewState>();
+                        state?.switchToTab(1);
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -295,10 +305,8 @@ class _SeekerHomePage extends StatelessWidget {
                   ),
                   TextButton(
                     onPressed: () {
-                      final state = context.findAncestorStateOfType<_SeekerMainViewState>();
-                      state?.setState(() {
-                        state._currentIndex = 1;
-                      });
+                      final state = context.findAncestorStateOfType<SeekerMainViewState>();
+                      state?.switchToTab(1);
                     },
                     child: const Text('See All'),
                   ),
@@ -365,10 +373,8 @@ class _SeekerHomePage extends StatelessWidget {
 
   void _filterByCategory(BuildContext context, String category) {
     context.read<JobProvider>().filterJobs({'category': category});
-    final state = context.findAncestorStateOfType<_SeekerMainViewState>();
-    state?.setState(() {
-      state._currentIndex = 1;
-    });
+    final state = context.findAncestorStateOfType<SeekerMainViewState>();
+    state?.switchToTab(1);
   }
 
   void _navigateToJobDetails(BuildContext context, JobModel job) {

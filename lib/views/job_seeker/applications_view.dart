@@ -6,6 +6,7 @@ import '../../models/application_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/application_provider.dart';
 import 'application_details_view.dart';
+import 'seeker_main_view.dart';
 
 class ApplicationsView extends StatefulWidget {
   const ApplicationsView({super.key});
@@ -158,7 +159,9 @@ class _ApplicationsViewState extends State<ApplicationsView>
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: () {
-                // Navigate to search
+                // Navigate to search tab
+                final state = context.findAncestorStateOfType<SeekerMainViewState>();
+                state?.switchToTab(1);
               },
               child: const Text('Browse Jobs'),
             ),
