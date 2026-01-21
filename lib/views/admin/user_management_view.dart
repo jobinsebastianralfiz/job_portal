@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
@@ -22,6 +23,12 @@ class _UserManagementViewState extends State<UserManagementView>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_onTabChanged);
+
+    // Load users when view is opened
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      debugPrint('UserManagementView: Loading users...');
+      context.read<AdminProvider>().loadUsers();
+    });
   }
 
   @override
@@ -33,22 +40,10 @@ class _UserManagementViewState extends State<UserManagementView>
   }
 
   void _onTabChanged() {
+    // Just rebuild the UI - filtering is done client-side in _buildUserList
+    // No need to reload data from server when switching tabs
     if (!_tabController.indexIsChanging) {
-      final adminProvider = context.read<AdminProvider>();
-      switch (_tabController.index) {
-        case 0:
-          adminProvider.setUserFilter('all');
-          break;
-        case 1:
-          adminProvider.setUserFilter('job_seeker');
-          break;
-        case 2:
-          adminProvider.setUserFilter('job_provider');
-          break;
-        case 3:
-          adminProvider.setUserStatusFilter('suspended');
-          break;
-      }
+      setState(() {});
     }
   }
 
@@ -77,7 +72,7 @@ class _UserManagementViewState extends State<UserManagementView>
             ),
             Tab(
               text:
-                  'Inactive (${adminProvider.users.where((u) => !u.isActive).length})',
+                  'Suspended (${adminProvider.users.where((u) => !u.isActive || u.status == 'suspended').length})',
             ),
           ],
         ),
@@ -133,9 +128,21 @@ class _UserManagementViewState extends State<UserManagementView>
           // User List
           Expanded(
             child: adminProvider.isLoadingUsers
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('Loading users...'),
+                      ],
+                    ),
+                  )
                 : RefreshIndicator(
-                    onRefresh: () async => adminProvider.loadUsers(),
+                    onRefresh: () async {
+                      debugPrint('Pull to refresh triggered');
+                      await adminProvider.loadUsers();
+                    },
                     child: _buildUserList(adminProvider),
                   ),
           ),
@@ -147,6 +154,15 @@ class _UserManagementViewState extends State<UserManagementView>
   Widget _buildUserList(AdminProvider adminProvider) {
     List<UserModel> users = adminProvider.users;
 
+    debugPrint('_buildUserList: Total users from provider: ${users.length}');
+
+    // Debug: show how many users match suspended criteria
+    final suspendedUsers = users.where((u) => !u.isActive || u.status == 'suspended').toList();
+    debugPrint('_buildUserList: Users matching suspended criteria: ${suspendedUsers.length}');
+    for (var u in suspendedUsers) {
+      debugPrint('  - ${u.email}: isActive=${u.isActive}, status=${u.status}');
+    }
+
     // Filter based on tab
     switch (_tabController.index) {
       case 1:
@@ -156,9 +172,12 @@ class _UserManagementViewState extends State<UserManagementView>
         users = users.where((u) => u.role == 'job_provider').toList();
         break;
       case 3:
-        users = users.where((u) => !u.isActive).toList();
+        // Show users who are inactive OR suspended
+        users = suspendedUsers;
         break;
     }
+
+    debugPrint('_buildUserList: After tab ${_tabController.index} filter: ${users.length} users');
 
     if (users.isEmpty) {
       return Center(
@@ -173,8 +192,17 @@ class _UserManagementViewState extends State<UserManagementView>
             ),
             const SizedBox(height: 8),
             Text(
-              'Try adjusting your filters',
+              'Try adjusting your filters or pull to refresh',
               style: AppTextStyles.bodyMedium.copyWith(color: AppColors.grey500),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                debugPrint('Manual refresh triggered');
+                adminProvider.loadUsers();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Refresh'),
             ),
           ],
         ),
@@ -403,7 +431,7 @@ class _UserCard extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            _StatusBadge(status: user.isActive ? 'active' : 'inactive'),
+                            _StatusBadge(status: user.status == 'suspended' ? 'suspended' : (user.isActive ? 'active' : 'inactive')),
                           ],
                         ),
                         const SizedBox(height: 4),
@@ -462,7 +490,7 @@ class _UserCard extends StatelessWidget {
                           ],
                         ),
                       ),
-                      if (user.isActive)
+                      if (user.isActive && user.status != 'suspended')
                         const PopupMenuItem(
                           value: 'suspend',
                           child: Row(

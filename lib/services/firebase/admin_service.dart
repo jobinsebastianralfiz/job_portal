@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../../models/user_model.dart';
 import '../../models/job_model.dart';
 import '../../models/company_model.dart';
@@ -144,41 +145,67 @@ class AdminService {
     String? role,
     String? status,
     String? searchQuery,
-    int limit = 20,
+    int limit = 100,
     DocumentSnapshot? lastDoc,
   }) async {
     try {
-      Query query = _firestore.collection('users');
+      debugPrint('========================================');
+      debugPrint('AdminService.getAllUsers() STARTING');
+      debugPrint('Parameters - role: $role, status: $status, search: $searchQuery');
+      debugPrint('========================================');
 
+      // Simple query - just get all users
+      final snapshot = await _firestore.collection('users').get();
+
+      debugPrint('Firestore returned ${snapshot.docs.length} documents');
+
+      if (snapshot.docs.isEmpty) {
+        debugPrint('WARNING: No users found in Firestore users collection!');
+        return [];
+      }
+
+      // Log first few documents for debugging
+      for (int i = 0; i < snapshot.docs.length && i < 3; i++) {
+        final doc = snapshot.docs[i];
+        debugPrint('User ${i + 1}: id=${doc.id}, data=${doc.data()}');
+      }
+
+      List<UserModel> users = [];
+      int suspendedCount = 0;
+      for (final doc in snapshot.docs) {
+        try {
+          final data = doc.data();
+          // Check for suspended users in raw data
+          if (data['status'] == 'suspended' || data['isActive'] == false) {
+            debugPrint('FOUND SUSPENDED/INACTIVE USER: ${doc.id}, status=${data['status']}, isActive=${data['isActive']}');
+            suspendedCount++;
+          }
+          final userWithId = {...data, 'userId': doc.id};
+          users.add(UserModel.fromJson(userWithId));
+        } catch (parseError) {
+          debugPrint('ERROR parsing user ${doc.id}: $parseError');
+        }
+      }
+
+      debugPrint('Successfully parsed ${users.length} users (found $suspendedCount suspended/inactive in raw data)');
+
+      // Filter by role client-side
       if (role != null && role != 'all') {
-        query = query.where('role', isEqualTo: role);
+        users = users.where((user) => user.role == role).toList();
+        debugPrint('After role filter ($role): ${users.length} users');
       }
 
-      // Filter by status if specified
+      // Filter by status client-side
       if (status != null && status != 'all') {
-        query = query.where('status', isEqualTo: status);
+        users = users.where((user) => user.status == status).toList();
+        debugPrint('After status filter ($status): ${users.length} users');
       }
-
-      query = query.orderBy('createdAt', descending: true);
-
-      if (lastDoc != null) {
-        query = query.startAfterDocument(lastDoc);
-      }
-
-      query = query.limit(limit);
-
-      final snapshot = await query.get();
-
-      List<UserModel> users = snapshot.docs
-          .map((doc) => UserModel.fromJson({...doc.data() as Map<String, dynamic>, 'userId': doc.id}))
-          .toList();
 
       // Exclude deleted users unless specifically filtering for them
       if (status != 'deleted') {
-        users = users.where((user) {
-          final userStatus = user.status;
-          return userStatus != 'deleted';
-        }).toList();
+        final beforeCount = users.length;
+        users = users.where((user) => user.status != 'deleted').toList();
+        debugPrint('After excluding deleted: ${users.length} users (removed ${beforeCount - users.length})');
       }
 
       // Filter by search query if provided
@@ -186,14 +213,24 @@ class AdminService {
         final lowerQuery = searchQuery.toLowerCase();
         users = users.where((user) {
           return user.email.toLowerCase().contains(lowerQuery) ||
-              (user.firstName?.toLowerCase().contains(lowerQuery) ?? false) ||
-              (user.lastName?.toLowerCase().contains(lowerQuery) ?? false);
+              user.firstName.toLowerCase().contains(lowerQuery) ||
+              user.lastName.toLowerCase().contains(lowerQuery);
         }).toList();
+        debugPrint('After search filter: ${users.length} users');
       }
 
+      // Sort by createdAt descending (client-side)
+      users.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      debugPrint('========================================');
+      debugPrint('FINAL: Returning ${users.length} users');
+      debugPrint('========================================');
       return users;
-    } catch (e) {
-      print('Error getting users: $e');
+    } catch (e, stackTrace) {
+      debugPrint('========================================');
+      debugPrint('ERROR in getAllUsers: $e');
+      debugPrint('Stack trace: $stackTrace');
+      debugPrint('========================================');
       return [];
     }
   }
@@ -213,12 +250,15 @@ class AdminService {
 
   Future<bool> suspendUser(String userId, String reason) async {
     try {
+      print('Suspending user: $userId');
       await _firestore.collection('users').doc(userId).update({
         'status': 'suspended',
+        'isActive': false,
         'suspendedAt': DateTime.now().toIso8601String(),
         'suspensionReason': reason,
         'updatedAt': DateTime.now().toIso8601String(),
       });
+      print('User $userId suspended successfully');
       return true;
     } catch (e) {
       print('Error suspending user: $e');
@@ -228,12 +268,15 @@ class AdminService {
 
   Future<bool> activateUser(String userId) async {
     try {
+      print('Activating user: $userId');
       await _firestore.collection('users').doc(userId).update({
         'status': 'active',
+        'isActive': true,
         'suspendedAt': FieldValue.delete(),
         'suspensionReason': FieldValue.delete(),
         'updatedAt': DateTime.now().toIso8601String(),
       });
+      print('User $userId activated successfully');
       return true;
     } catch (e) {
       print('Error activating user: $e');

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/user_model.dart';
 import '../models/job_model.dart';
@@ -74,6 +75,7 @@ class AdminProvider extends ChangeNotifier {
   // ==================== User Management ====================
 
   Future<void> loadUsers() async {
+    debugPrint('AdminProvider.loadUsers() started');
     _isLoadingUsers = true;
     notifyListeners();
 
@@ -83,6 +85,7 @@ class AdminProvider extends ChangeNotifier {
       searchQuery: _userSearchQuery.isNotEmpty ? _userSearchQuery : null,
     );
 
+    debugPrint('AdminProvider.loadUsers() completed - loaded ${_users.length} users');
     _isLoadingUsers = false;
     notifyListeners();
   }
