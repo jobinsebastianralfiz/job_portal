@@ -21,6 +21,8 @@ class SeekerProfileView extends StatefulWidget {
 }
 
 class _SeekerProfileViewState extends State<SeekerProfileView> {
+  bool _isUploadingImage = false;
+
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
@@ -35,12 +37,6 @@ class _SeekerProfileViewState extends State<SeekerProfileView> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => Navigator.pushNamed(context, '/settings'),
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -52,6 +48,7 @@ class _SeekerProfileViewState extends State<SeekerProfileView> {
               email: user.email,
               image: user.profileImage,
               onEditPhoto: () => _pickProfileImage(context),
+              isUploading: _isUploadingImage,
             ),
             const SizedBox(height: 24),
 
@@ -241,21 +238,33 @@ class _SeekerProfileViewState extends State<SeekerProfileView> {
     final image = await picker.pickImage(source: ImageSource.gallery);
 
     if (image != null && mounted) {
-      final storageService = StorageService();
-      final url = await storageService.uploadProfileImage(
-        File(image.path),
-        user.userId,
-      );
+      setState(() => _isUploadingImage = true);
 
-      if (url != null && mounted) {
-        final userService = UserService();
-        await userService.updateProfile(userId: user.userId, profileImage: url);
-        // Reload user data to show updated image
-        await authProvider.refreshUserData();
-        if (mounted) {
+      try {
+        final storageService = StorageService();
+        final url = await storageService.uploadProfileImage(
+          File(image.path),
+          user.userId,
+        );
+
+        if (url != null && mounted) {
+          final userService = UserService();
+          await userService.updateProfile(userId: user.userId, profileImage: url);
+          // Reload user data to show updated image
+          await authProvider.refreshUserData();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Profile photo updated')),
+            );
+          }
+        } else if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Profile photo updated')),
+            const SnackBar(content: Text('Failed to upload image')),
           );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isUploadingImage = false);
         }
       }
     }
@@ -346,6 +355,9 @@ class _SeekerProfileViewState extends State<SeekerProfileView> {
     final firstNameController = TextEditingController(text: user.firstName);
     final lastNameController = TextEditingController(text: user.lastName);
     final phoneController = TextEditingController(text: user.phoneNumber);
+    final cityController = TextEditingController(text: user.location?.city ?? '');
+    final stateController = TextEditingController(text: user.location?.state ?? '');
+    final countryController = TextEditingController(text: user.location?.country ?? '');
 
     showModalBottomSheet(
       context: context,
@@ -354,52 +366,90 @@ class _SeekerProfileViewState extends State<SeekerProfileView> {
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom,
         ),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Edit Personal Info', style: AppTextStyles.h5),
-              const SizedBox(height: 16),
-              CustomTextField(
-                controller: firstNameController,
-                label: 'First Name',
-                hintText: 'Enter first name',
-              ),
-              const SizedBox(height: 12),
-              CustomTextField(
-                controller: lastNameController,
-                label: 'Last Name',
-                hintText: 'Enter last name',
-              ),
-              const SizedBox(height: 12),
-              CustomTextField(
-                controller: phoneController,
-                label: 'Phone',
-                hintText: 'Enter phone number',
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 24),
-              CustomButton(
-                text: 'Save Changes',
-                onPressed: () async {
-                  final userService = UserService();
-                  await userService.updateProfile(
-                    userId: user.userId,
-                    firstName: firstNameController.text,
-                    lastName: lastNameController.text,
-                    phone: phoneController.text,
-                  );
-                  if (context.mounted) {
-                    context.read<AuthProvider>().refreshUserData();
-                    Navigator.pop(context);
-                  }
-                },
-                width: double.infinity,
-              ),
-              const SizedBox(height: 16),
-            ],
+        child: SingleChildScrollView(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Edit Personal Info', style: AppTextStyles.h5),
+                const SizedBox(height: 16),
+                CustomTextField(
+                  controller: firstNameController,
+                  label: 'First Name',
+                  hintText: 'Enter first name',
+                ),
+                const SizedBox(height: 12),
+                CustomTextField(
+                  controller: lastNameController,
+                  label: 'Last Name',
+                  hintText: 'Enter last name',
+                ),
+                const SizedBox(height: 12),
+                CustomTextField(
+                  controller: phoneController,
+                  label: 'Phone',
+                  hintText: 'Enter phone number',
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: 16),
+                Text('Location', style: AppTextStyles.labelLarge),
+                const SizedBox(height: 12),
+                CustomTextField(
+                  controller: cityController,
+                  label: 'City',
+                  hintText: 'Enter city',
+                ),
+                const SizedBox(height: 12),
+                CustomTextField(
+                  controller: stateController,
+                  label: 'State',
+                  hintText: 'Enter state',
+                ),
+                const SizedBox(height: 12),
+                CustomTextField(
+                  controller: countryController,
+                  label: 'Country',
+                  hintText: 'Enter country',
+                ),
+                const SizedBox(height: 24),
+                CustomButton(
+                  text: 'Save Changes',
+                  onPressed: () async {
+                    final userService = UserService();
+
+                    // Build location map if any location field is filled
+                    Map<String, dynamic>? locationData;
+                    if (cityController.text.isNotEmpty ||
+                        stateController.text.isNotEmpty ||
+                        countryController.text.isNotEmpty) {
+                      locationData = {
+                        'address': user.location?.address ?? '',
+                        'city': cityController.text.trim(),
+                        'state': stateController.text.trim(),
+                        'country': countryController.text.trim(),
+                        'zipCode': user.location?.zipCode ?? '',
+                      };
+                    }
+
+                    await userService.updateProfile(
+                      userId: user.userId,
+                      firstName: firstNameController.text,
+                      lastName: lastNameController.text,
+                      phone: phoneController.text,
+                      location: locationData,
+                    );
+                    if (context.mounted) {
+                      context.read<AuthProvider>().refreshUserData();
+                      Navigator.pop(context);
+                    }
+                  },
+                  width: double.infinity,
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
           ),
         ),
       ),
@@ -707,12 +757,14 @@ class _ProfileHeader extends StatelessWidget {
   final String email;
   final String? image;
   final VoidCallback onEditPhoto;
+  final bool isUploading;
 
   const _ProfileHeader({
     required this.name,
     required this.email,
     this.image,
     required this.onEditPhoto,
+    this.isUploading = false,
   });
 
   @override
@@ -724,23 +776,28 @@ class _ProfileHeader extends StatelessWidget {
             CircleAvatar(
               radius: 50,
               backgroundColor: AppColors.grey200,
-              backgroundImage: image != null ? NetworkImage(image!) : null,
-              child: image == null
-                  ? Text(
-                      name.isNotEmpty ? name[0].toUpperCase() : 'U',
-                      style: AppTextStyles.h1.copyWith(color: AppColors.grey500),
+              backgroundImage: image != null && !isUploading ? NetworkImage(image!) : null,
+              child: isUploading
+                  ? const CircularProgressIndicator(
+                      strokeWidth: 3,
+                      valueColor: AlwaysStoppedAnimation(AppColors.primary),
                     )
-                  : null,
+                  : (image == null
+                      ? Text(
+                          name.isNotEmpty ? name[0].toUpperCase() : 'U',
+                          style: AppTextStyles.h1.copyWith(color: AppColors.grey500),
+                        )
+                      : null),
             ),
             Positioned(
               bottom: 0,
               right: 0,
               child: GestureDetector(
-                onTap: onEditPhoto,
+                onTap: isUploading ? null : onEditPhoto,
                 child: Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: const BoxDecoration(
-                    color: AppColors.primary,
+                  decoration: BoxDecoration(
+                    color: isUploading ? AppColors.grey400 : AppColors.primary,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -756,6 +813,14 @@ class _ProfileHeader extends StatelessWidget {
         const SizedBox(height: 16),
         Text(name, style: AppTextStyles.h4),
         Text(email, style: AppTextStyles.bodyMedium.copyWith(color: AppColors.grey500)),
+        if (isUploading)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'Uploading...',
+              style: AppTextStyles.caption.copyWith(color: AppColors.primary),
+            ),
+          ),
       ],
     );
   }

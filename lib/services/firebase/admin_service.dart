@@ -11,10 +11,14 @@ class AdminService {
 
   Future<Map<String, dynamic>> getDashboardStats() async {
     try {
+      debugPrint('getDashboardStats: Fetching data from Firestore...');
+
       final usersSnapshot = await _firestore.collection('users').get();
       final jobsSnapshot = await _firestore.collection('jobs').get();
       final applicationsSnapshot = await _firestore.collection('applications').get();
       final companiesSnapshot = await _firestore.collection('companies').get();
+
+      debugPrint('getDashboardStats: users=${usersSnapshot.docs.length}, jobs=${jobsSnapshot.docs.length}, applications=${applicationsSnapshot.docs.length}, companies=${companiesSnapshot.docs.length}');
 
       final users = usersSnapshot.docs;
       final seekers = users.where((u) => u.data()['role'] == 'job_seeker').length;
@@ -23,6 +27,16 @@ class AdminService {
       final jobs = jobsSnapshot.docs;
       final activeJobs = jobs.where((j) => j.data()['status'] == 'active').length;
       final pendingJobs = jobs.where((j) => j.data()['status'] == 'pending').length;
+
+      debugPrint('getDashboardStats: activeJobs=$activeJobs, pendingJobs=$pendingJobs');
+
+      // Debug: print all job statuses
+      final statusCounts = <String, int>{};
+      for (final job in jobs) {
+        final status = job.data()['status']?.toString() ?? 'null';
+        statusCounts[status] = (statusCounts[status] ?? 0) + 1;
+      }
+      debugPrint('getDashboardStats: Job status breakdown: $statusCounts');
 
       final applications = applicationsSnapshot.docs;
       final pendingApps = applications.where((a) => a.data()['status'] == 'pending').length;
@@ -360,12 +374,32 @@ class AdminService {
           .orderBy('createdAt', descending: true)
           .get();
 
+      print('getPendingJobs: Found ${snapshot.docs.length} pending jobs');
       return snapshot.docs
           .map((doc) => JobModel.fromJson({...doc.data(), 'jobId': doc.id}))
           .toList();
     } catch (e) {
       print('Error getting pending jobs: $e');
-      return [];
+      if (e.toString().contains('index')) {
+        print('INDEX NEEDED: Create composite index for jobs collection:');
+        print('  Fields: status (Ascending), createdAt (Descending)');
+        print('  Or visit the URL in the error above to create the index automatically.');
+      }
+      // Fallback: try without ordering
+      try {
+        final snapshot = await _firestore
+            .collection('jobs')
+            .where('status', isEqualTo: 'pending')
+            .get();
+
+        print('getPendingJobs (fallback): Found ${snapshot.docs.length} pending jobs');
+        return snapshot.docs
+            .map((doc) => JobModel.fromJson({...doc.data(), 'jobId': doc.id}))
+            .toList();
+      } catch (e2) {
+        print('Fallback query also failed: $e2');
+        return [];
+      }
     }
   }
 
@@ -382,7 +416,25 @@ class AdminService {
           .toList();
     } catch (e) {
       print('Error getting reported jobs: $e');
-      return [];
+      if (e.toString().contains('index')) {
+        print('INDEX NEEDED: Create composite index for jobs collection:');
+        print('  Fields: isReported (Ascending), reportedAt (Descending)');
+        print('  Or visit the URL in the error above to create the index automatically.');
+      }
+      // Fallback: try without ordering
+      try {
+        final snapshot = await _firestore
+            .collection('jobs')
+            .where('isReported', isEqualTo: true)
+            .get();
+
+        return snapshot.docs
+            .map((doc) => JobModel.fromJson({...doc.data(), 'jobId': doc.id}))
+            .toList();
+      } catch (e2) {
+        print('Fallback query also failed: $e2');
+        return [];
+      }
     }
   }
 
@@ -463,16 +515,37 @@ class AdminService {
 
   Future<List<CompanyModel>> getPendingCompanyVerifications() async {
     try {
-      final snapshot = await _firestore
-          .collection('companies')
-          .where('isVerified', isEqualTo: false)
-          .where('verificationStatus', isEqualTo: 'pending')
-          .orderBy('createdAt', descending: true)
-          .get();
+      // Get all companies and filter client-side for pending ones
+      final snapshot = await _firestore.collection('companies').get();
 
-      return snapshot.docs
-          .map((doc) => CompanyModel.fromJson({...doc.data(), 'companyId': doc.id}))
-          .toList();
+      debugPrint('getPendingCompanyVerifications: Found ${snapshot.docs.length} total companies');
+
+      // Filter for companies that are:
+      // - Not verified (isVerified: false)
+      // - Not rejected (verificationStatus != 'rejected')
+      final pendingCompanies = <CompanyModel>[];
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final isVerified = data['isVerified'] as bool? ?? false;
+        final verificationStatus = data['verificationStatus'] as String?;
+
+        debugPrint('Company ${doc.id}: isVerified=$isVerified, verificationStatus=$verificationStatus');
+
+        // Pending = not verified AND not rejected
+        if (!isVerified && verificationStatus != 'rejected') {
+          pendingCompanies.add(
+            CompanyModel.fromJson({...data, 'companyId': doc.id}),
+          );
+        }
+      }
+
+      debugPrint('getPendingCompanyVerifications: ${pendingCompanies.length} are pending approval');
+
+      // Sort by createdAt descending
+      pendingCompanies.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      return pendingCompanies;
     } catch (e) {
       print('Error getting pending company verifications: $e');
       return [];
@@ -515,6 +588,16 @@ class AdminService {
     try {
       final activities = <Map<String, dynamic>>[];
 
+      // Helper to convert timestamp to ISO string
+      String? getTimestampString(dynamic value) {
+        if (value is Timestamp) {
+          return value.toDate().toIso8601String();
+        } else if (value is String) {
+          return value;
+        }
+        return DateTime.now().toIso8601String();
+      }
+
       // Recent users
       final usersSnapshot = await _firestore
           .collection('users')
@@ -523,11 +606,15 @@ class AdminService {
           .get();
 
       for (final doc in usersSnapshot.docs) {
-        activities.add({
-          'type': 'user_registered',
-          'data': doc.data(),
-          'timestamp': doc.data()['createdAt'],
-        });
+        final data = doc.data();
+        final timestamp = getTimestampString(data['createdAt']);
+        if (timestamp != null) {
+          activities.add({
+            'type': 'user_registered',
+            'data': data,
+            'timestamp': timestamp,
+          });
+        }
       }
 
       // Recent jobs
@@ -538,11 +625,15 @@ class AdminService {
           .get();
 
       for (final doc in jobsSnapshot.docs) {
-        activities.add({
-          'type': 'job_posted',
-          'data': doc.data(),
-          'timestamp': doc.data()['createdAt'],
-        });
+        final data = doc.data();
+        final timestamp = getTimestampString(data['createdAt']);
+        if (timestamp != null) {
+          activities.add({
+            'type': 'job_posted',
+            'data': data,
+            'timestamp': timestamp,
+          });
+        }
       }
 
       // Recent applications
@@ -553,18 +644,26 @@ class AdminService {
           .get();
 
       for (final doc in applicationsSnapshot.docs) {
-        activities.add({
-          'type': 'application_submitted',
-          'data': doc.data(),
-          'timestamp': doc.data()['appliedAt'],
-        });
+        final data = doc.data();
+        final timestamp = getTimestampString(data['appliedAt']);
+        if (timestamp != null) {
+          activities.add({
+            'type': 'application_submitted',
+            'data': data,
+            'timestamp': timestamp,
+          });
+        }
       }
 
       // Sort by timestamp
       activities.sort((a, b) {
-        final aTime = DateTime.parse(a['timestamp']);
-        final bTime = DateTime.parse(b['timestamp']);
-        return bTime.compareTo(aTime);
+        try {
+          final aTime = DateTime.parse(a['timestamp']);
+          final bTime = DateTime.parse(b['timestamp']);
+          return bTime.compareTo(aTime);
+        } catch (e) {
+          return 0;
+        }
       });
 
       return activities.take(limit).toList();

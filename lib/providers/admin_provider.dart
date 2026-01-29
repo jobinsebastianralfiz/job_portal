@@ -64,9 +64,29 @@ class AdminProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    _dashboardStats = await _adminService.getDashboardStats();
-    _weeklyStats = await _adminService.getWeeklyStats();
-    _recentActivity = await _adminService.getRecentActivity();
+    debugPrint('========== LOADING DASHBOARD STATS ==========');
+
+    // Load all dashboard data in parallel
+    final results = await Future.wait([
+      _adminService.getDashboardStats(),
+      _adminService.getWeeklyStats(),
+      _adminService.getRecentActivity(),
+      _adminService.getPendingCompanyVerifications(),
+      _adminService.getReportedJobs(),
+    ]);
+
+    _dashboardStats = results[0] as Map<String, dynamic>;
+    _weeklyStats = results[1] as Map<String, List<int>>;
+    _recentActivity = results[2] as List<Map<String, dynamic>>;
+    _pendingVerifications = results[3] as List<CompanyModel>;
+    _reportedJobs = results[4] as List<JobModel>;
+
+    debugPrint('Dashboard Stats: $_dashboardStats');
+    debugPrint('Pending Jobs from stats: ${_dashboardStats['pendingJobs']}');
+    debugPrint('Pending Verifications: ${_pendingVerifications.length}');
+    debugPrint('Reported Jobs: ${_reportedJobs.length}');
+    debugPrint('Recent Activity: ${_recentActivity.length} items');
+    debugPrint('==============================================');
 
     _isLoading = false;
     notifyListeners();

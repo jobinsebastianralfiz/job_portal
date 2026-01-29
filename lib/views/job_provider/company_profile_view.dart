@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
@@ -21,6 +22,7 @@ class _CompanyProfileViewState extends State<CompanyProfileView> {
   final _storageService = StorageService();
   CompanyModel? _company;
   bool _isLoading = true;
+  bool _isUploadingLogo = false;
 
   @override
   void initState() {
@@ -85,41 +87,51 @@ class _CompanyProfileViewState extends State<CompanyProfileView> {
                                   CircleAvatar(
                                     radius: 50,
                                     backgroundColor: Colors.white,
-                                    backgroundImage: _company!.logo != null
+                                    backgroundImage: _company!.logo != null && !_isUploadingLogo
                                         ? NetworkImage(_company!.logo!)
                                         : null,
-                                    child: _company!.logo == null
-                                        ? Text(
-                                            _company!.name.isNotEmpty
-                                                ? _company!.name[0].toUpperCase()
-                                                : 'C',
-                                            style: AppTextStyles.h2.copyWith(
-                                              color: AppColors.primary,
-                                            ),
+                                    child: _isUploadingLogo
+                                        ? const CircularProgressIndicator(
+                                            strokeWidth: 3,
+                                            valueColor: AlwaysStoppedAnimation(AppColors.primary),
                                           )
-                                        : null,
+                                        : (_company!.logo == null
+                                            ? Text(
+                                                _company!.name.isNotEmpty
+                                                    ? _company!.name[0].toUpperCase()
+                                                    : 'C',
+                                                style: AppTextStyles.h2.copyWith(
+                                                  color: AppColors.primary,
+                                                ),
+                                              )
+                                            : null),
                                   ),
                                   Positioned(
                                     right: 0,
                                     bottom: 0,
                                     child: InkWell(
-                                      onTap: () => _uploadLogo(),
+                                      onTap: _isUploadingLogo ? null : () => _uploadLogo(),
                                       child: Container(
                                         padding: const EdgeInsets.all(8),
-                                        decoration: const BoxDecoration(
-                                          color: Colors.white,
+                                        decoration: BoxDecoration(
+                                          color: _isUploadingLogo ? AppColors.grey300 : Colors.white,
                                           shape: BoxShape.circle,
                                         ),
-                                        child: const Icon(
+                                        child: Icon(
                                           Icons.camera_alt,
                                           size: 20,
-                                          color: AppColors.primary,
+                                          color: _isUploadingLogo ? AppColors.grey500 : AppColors.primary,
                                         ),
                                       ),
                                     ),
                                   ),
                                 ],
                               ),
+                              if (_isUploadingLogo)
+                                Text(
+                                  'Uploading...',
+                                  style: AppTextStyles.caption.copyWith(color: Colors.white70),
+                                ),
                               const SizedBox(height: 16),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -610,21 +622,51 @@ class _CompanyProfileViewState extends State<CompanyProfileView> {
     final image = await picker.pickImage(source: ImageSource.gallery);
 
     if (image != null && mounted) {
-      final file = File(image.path);
-      final url = await _storageService.uploadCompanyLogo(
-        file,
-        _company!.companyId,
-      );
+      setState(() => _isUploadingLogo = true);
 
-      if (url != null && mounted) {
-        await _companyService.updateLogo(_company!.companyId, url);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Company logo updated'),
-            backgroundColor: AppColors.success,
-          ),
+      try {
+        final file = File(image.path);
+        debugPrint('Uploading logo for company: ${_company!.companyId}');
+
+        final url = await _storageService.uploadCompanyLogo(
+          file,
+          _company!.companyId,
         );
-        _loadCompanyProfile();
+
+        debugPrint('Logo upload result: $url');
+
+        if (url != null && mounted) {
+          await _companyService.updateLogo(_company!.companyId, url);
+          debugPrint('Logo URL saved to Firestore');
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Company logo updated'),
+                backgroundColor: AppColors.success,
+              ),
+            );
+            _loadCompanyProfile();
+          }
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to upload logo'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('Error uploading logo: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isUploadingLogo = false);
+        }
       }
     }
   }
@@ -633,38 +675,88 @@ class _CompanyProfileViewState extends State<CompanyProfileView> {
     final picker = ImagePicker();
     final images = await picker.pickMultiImage();
 
-    if (images.isNotEmpty) {
-      final urls = <String>[];
-      for (final image in images) {
-        final file = File(image.path);
-        final url = await _storageService.uploadCompanyGalleryImage(
-          _company!.companyId,
-          file,
-        );
-        if (url != null) {
-          urls.add(url);
-        }
-      }
-
-      if (urls.isNotEmpty && _company != null) {
-        // Merge with existing gallery images
-        final existingGallery = _company!.gallery ?? [];
-        final updatedGallery = [...existingGallery, ...urls];
-
-        final updatedCompany = _company!.copyWith(
-          gallery: updatedGallery,
-          updatedAt: DateTime.now(),
-        );
-
-        await _companyService.updateCompany(updatedCompany);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Gallery images uploaded'),
-            backgroundColor: AppColors.success,
+    if (images.isNotEmpty && mounted) {
+      // Show loading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              ),
+              const SizedBox(width: 16),
+              Text('Uploading ${images.length} image(s)...'),
+            ],
           ),
-        );
-        _loadCompanyProfile();
+          duration: const Duration(seconds: 30),
+        ),
+      );
+
+      try {
+        final urls = <String>[];
+        for (final image in images) {
+          final file = File(image.path);
+          debugPrint('Uploading gallery image: ${image.path}');
+
+          final url = await _storageService.uploadCompanyGalleryImage(
+            _company!.companyId,
+            file,
+          );
+
+          debugPrint('Gallery image upload result: $url');
+
+          if (url != null) {
+            urls.add(url);
+          }
+        }
+
+        debugPrint('Total images uploaded: ${urls.length}');
+
+        if (urls.isNotEmpty && _company != null && mounted) {
+          // Merge with existing gallery images
+          final existingGallery = _company!.gallery ?? [];
+          final updatedGallery = [...existingGallery, ...urls];
+
+          debugPrint('Updating gallery: ${updatedGallery.length} total images');
+
+          final updatedCompany = _company!.copyWith(
+            gallery: updatedGallery,
+            updatedAt: DateTime.now(),
+          );
+
+          await _companyService.updateCompany(updatedCompany);
+
+          debugPrint('Gallery updated in Firestore');
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${urls.length} image(s) uploaded successfully'),
+                backgroundColor: AppColors.success,
+              ),
+            );
+            _loadCompanyProfile();
+          }
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to upload images'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('Error uploading gallery images: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
       }
     }
   }
@@ -1179,7 +1271,12 @@ class _EditCompanySheetState extends State<_EditCompanySheet> {
         updatedAt: DateTime.now(),
       );
 
+      debugPrint('Updating company: ${updatedCompany.companyId}');
+      debugPrint('New data: name=${updatedCompany.name}, industry=${updatedCompany.industry}');
+
       await _companyService.updateCompany(updatedCompany);
+
+      debugPrint('Company updated successfully');
 
       setState(() => _isLoading = false);
 
@@ -1193,6 +1290,7 @@ class _EditCompanySheetState extends State<_EditCompanySheet> {
         widget.onSaved();
       }
     } catch (e) {
+      debugPrint('Error updating company: $e');
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
