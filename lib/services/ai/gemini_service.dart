@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 class GeminiService {
   // IMPORTANT: Replace with your actual Gemini API key
   // Get your key from: https://makersuite.google.com/app/apikey
-  static const String _apiKey = 'AIzaSyBsBnwiPcb7twvGi0qgcBEuU4uw846IlPs';
+  static const String _apiKey = 'AIzaSyBn2FqkEM0jn9TcZ04h1vbod1_9zG3_91c';
   static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1';
 
   /// Parse resume text and extract structured information
