@@ -9,7 +9,7 @@ class SubscriptionService {
   bool _isInitialized = false;
 
   // Razorpay Test Key
-  static const String _razorpayKey = 'rzp_test_S6VTC8xoPOYNxx';
+  static const String _razorpayKey = 'rzp_test_SHXkRbcNWvrk0G';
 
   // Callbacks stored for payment handling
   Function(String paymentId, String? orderId)? _onPaymentSuccess;
