@@ -74,6 +74,17 @@ class _SubscriptionPlansViewState extends State<SubscriptionPlansView> {
     final user = context.read<AuthProvider>().currentUser;
     if (user == null) return;
 
+    // Block if provider is not approved by admin
+    if (!user.canSelectPlan) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Your account must be approved by admin before selecting a plan.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     // Free plan - activate directly
     if (plan.tier == SubscriptionTier.free) {
       _activateFreePlan();

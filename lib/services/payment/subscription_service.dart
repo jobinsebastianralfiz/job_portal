@@ -138,18 +138,34 @@ class SubscriptionService {
         createdAt: now,
       );
 
+      // Check current providerStatus before creating subscription
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      final currentStatus = userDoc.data()?['providerStatus'] ?? 'pending_approval';
+
+      // Only allow subscription if admin has approved the provider
+      if (currentStatus != 'approved' && currentStatus != 'active') {
+        debugPrint('Cannot subscribe: provider status is $currentStatus (admin approval required)');
+        return null;
+      }
+
       final docRef = await _firestore
           .collection('subscriptions')
           .add(subscription.toJson());
 
       // Update user's subscription info
-      await _firestore.collection('users').doc(userId).update({
+      final updateData = {
         'subscriptionTier': tier.name,
         'subscriptionId': docRef.id,
         'subscriptionExpiresAt': Timestamp.fromDate(endDate),
-        'providerStatus': 'active',
         'updatedAt': Timestamp.now(),
-      });
+      };
+
+      // Only set to 'active' if currently 'approved' (admin already approved)
+      if (currentStatus == 'approved') {
+        updateData['providerStatus'] = 'active';
+      }
+
+      await _firestore.collection('users').doc(userId).update(updateData);
 
       return subscription.copyWith(subscriptionId: docRef.id);
     } catch (e) {
