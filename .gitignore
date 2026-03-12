@@ -1,5 +1,6 @@
 # Secrets
 rzp-key.csv
+lib/config/api_keys.dart
 
 # Miscellaneous
 *.class
