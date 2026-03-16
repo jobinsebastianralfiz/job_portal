@@ -21,6 +21,13 @@ class _JobModerationViewState extends State<JobModerationView>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final adminProvider = context.read<AdminProvider>();
+      adminProvider.loadJobs();
+      adminProvider.loadPendingJobs();
+      adminProvider.loadReportedJobs();
+      adminProvider.loadPendingVerifications();
+    });
   }
 
   @override

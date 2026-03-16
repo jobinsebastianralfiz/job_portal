@@ -344,11 +344,33 @@ class AdminService {
 
       query = query.limit(limit);
 
-      final snapshot = await query.get();
+      QuerySnapshot snapshot;
+      try {
+        snapshot = await query.get();
+      } catch (e) {
+        debugPrint('getAllJobs query failed (may need index): $e');
+        // Fallback: try without orderBy
+        Query fallbackQuery = _firestore.collection('jobs');
+        if (status != null && status != 'all') {
+          fallbackQuery = fallbackQuery.where('status', isEqualTo: status);
+        }
+        fallbackQuery = fallbackQuery.limit(limit);
+        snapshot = await fallbackQuery.get();
+      }
 
-      List<JobModel> jobs = snapshot.docs
-          .map((doc) => JobModel.fromJson({...doc.data() as Map<String, dynamic>, 'jobId': doc.id}))
-          .toList();
+      debugPrint('getAllJobs: fetched ${snapshot.docs.length} documents');
+
+      List<JobModel> jobs = [];
+      for (final doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          jobs.add(JobModel.fromJson({...data, 'jobId': doc.id}));
+        } catch (e) {
+          debugPrint('Error parsing job doc ${doc.id}: $e');
+        }
+      }
+
+      debugPrint('getAllJobs: parsed ${jobs.length} jobs successfully');
 
       // Filter by search query if provided
       if (searchQuery != null && searchQuery.isNotEmpty) {
@@ -361,80 +383,80 @@ class AdminService {
 
       return jobs;
     } catch (e) {
-      print('Error getting jobs: $e');
+      debugPrint('Error getting jobs: $e');
       return [];
     }
   }
 
   Future<List<JobModel>> getPendingJobs() async {
     try {
-      final snapshot = await _firestore
-          .collection('jobs')
-          .where('status', isEqualTo: 'pending')
-          .orderBy('createdAt', descending: true)
-          .get();
-
-      print('getPendingJobs: Found ${snapshot.docs.length} pending jobs');
-      return snapshot.docs
-          .map((doc) => JobModel.fromJson({...doc.data(), 'jobId': doc.id}))
-          .toList();
-    } catch (e) {
-      print('Error getting pending jobs: $e');
-      if (e.toString().contains('index')) {
-        print('INDEX NEEDED: Create composite index for jobs collection:');
-        print('  Fields: status (Ascending), createdAt (Descending)');
-        print('  Or visit the URL in the error above to create the index automatically.');
-      }
-      // Fallback: try without ordering
+      QuerySnapshot snapshot;
       try {
-        final snapshot = await _firestore
+        snapshot = await _firestore
+            .collection('jobs')
+            .where('status', isEqualTo: 'pending')
+            .orderBy('createdAt', descending: true)
+            .get();
+      } catch (e) {
+        debugPrint('getPendingJobs query failed (may need index): $e');
+        // Fallback: try without ordering
+        snapshot = await _firestore
             .collection('jobs')
             .where('status', isEqualTo: 'pending')
             .get();
-
-        print('getPendingJobs (fallback): Found ${snapshot.docs.length} pending jobs');
-        return snapshot.docs
-            .map((doc) => JobModel.fromJson({...doc.data(), 'jobId': doc.id}))
-            .toList();
-      } catch (e2) {
-        print('Fallback query also failed: $e2');
-        return [];
       }
+
+      debugPrint('getPendingJobs: Found ${snapshot.docs.length} pending jobs');
+
+      List<JobModel> jobs = [];
+      for (final doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          jobs.add(JobModel.fromJson({...data, 'jobId': doc.id}));
+        } catch (e) {
+          debugPrint('Error parsing pending job doc ${doc.id}: $e');
+        }
+      }
+      return jobs;
+    } catch (e) {
+      debugPrint('Error getting pending jobs: $e');
+      return [];
     }
   }
 
   Future<List<JobModel>> getReportedJobs() async {
     try {
-      final snapshot = await _firestore
-          .collection('jobs')
-          .where('isReported', isEqualTo: true)
-          .orderBy('reportedAt', descending: true)
-          .get();
-
-      return snapshot.docs
-          .map((doc) => JobModel.fromJson({...doc.data(), 'jobId': doc.id}))
-          .toList();
-    } catch (e) {
-      print('Error getting reported jobs: $e');
-      if (e.toString().contains('index')) {
-        print('INDEX NEEDED: Create composite index for jobs collection:');
-        print('  Fields: isReported (Ascending), reportedAt (Descending)');
-        print('  Or visit the URL in the error above to create the index automatically.');
-      }
-      // Fallback: try without ordering
+      QuerySnapshot snapshot;
       try {
-        final snapshot = await _firestore
+        snapshot = await _firestore
+            .collection('jobs')
+            .where('isReported', isEqualTo: true)
+            .orderBy('reportedAt', descending: true)
+            .get();
+      } catch (e) {
+        debugPrint('getReportedJobs query failed (may need index): $e');
+        // Fallback: try without ordering
+        snapshot = await _firestore
             .collection('jobs')
             .where('isReported', isEqualTo: true)
             .get();
-
-        return snapshot.docs
-            .map((doc) => JobModel.fromJson({...doc.data(), 'jobId': doc.id}))
-            .toList();
-      } catch (e2) {
-        print('Fallback query also failed: $e2');
-        return [];
       }
+
+      debugPrint('getReportedJobs: Found ${snapshot.docs.length} reported jobs');
+
+      List<JobModel> jobs = [];
+      for (final doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          jobs.add(JobModel.fromJson({...data, 'jobId': doc.id}));
+        } catch (e) {
+          debugPrint('Error parsing reported job doc ${doc.id}: $e');
+        }
+      }
+      return jobs;
+    } catch (e) {
+      debugPrint('Error getting reported jobs: $e');
+      return [];
     }
   }
 

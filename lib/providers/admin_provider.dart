@@ -158,10 +158,14 @@ class AdminProvider extends ChangeNotifier {
     _isLoadingJobs = true;
     notifyListeners();
 
+    debugPrint('AdminProvider.loadJobs() - filter: $_jobFilter, search: $_jobSearchQuery');
+
     _jobs = await _adminService.getAllJobs(
       status: _jobFilter == 'all' ? null : _jobFilter,
       searchQuery: _jobSearchQuery.isNotEmpty ? _jobSearchQuery : null,
     );
+
+    debugPrint('AdminProvider.loadJobs() - loaded ${_jobs.length} jobs');
 
     _isLoadingJobs = false;
     notifyListeners();

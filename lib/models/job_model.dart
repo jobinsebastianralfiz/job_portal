@@ -104,7 +104,7 @@ class JobModel {
   }
 
   factory JobModel.fromJson(Map<String, dynamic> json) {
-    return JobModel(
+    final job = JobModel(
       jobId: json['jobId'] as String? ?? '',
       title: json['title'] as String? ?? '',
       description: json['description'] as String? ?? '',
@@ -132,25 +132,26 @@ class JobModel {
       status: json['status'] as String? ?? 'draft',
       isFeatured: json['isFeatured'] as bool? ?? false,
       isUrgent: json['isUrgent'] as bool? ?? false,
-      expiresAt: json['expiresAt'] != null
-          ? (json['expiresAt'] as Timestamp).toDate()
-          : null,
+      expiresAt: _parseDateTime(json['expiresAt']),
       views: json['views'] as int? ?? 0,
       applications: json['applications'] as int? ?? 0,
       saves: json['saves'] as int? ?? 0,
       screeningQuestions: (json['screeningQuestions'] as List<dynamic>?)
           ?.map((q) => ScreeningQuestion.fromJson(q as Map<String, dynamic>))
           .toList(),
-      createdAt: json['createdAt'] != null
-          ? (json['createdAt'] as Timestamp).toDate()
-          : DateTime.now(),
-      updatedAt: json['updatedAt'] != null
-          ? (json['updatedAt'] as Timestamp).toDate()
-          : DateTime.now(),
-      publishedAt: json['publishedAt'] != null
-          ? (json['publishedAt'] as Timestamp).toDate()
-          : null,
+      createdAt: _parseDateTime(json['createdAt']) ?? DateTime.now(),
+      updatedAt: _parseDateTime(json['updatedAt']) ?? DateTime.now(),
+      publishedAt: _parseDateTime(json['publishedAt']),
     );
+    job.reportReason = json['reportReason'] as String?;
+    return job;
+  }
+
+  static DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.toDate();
+    if (value is String) return DateTime.tryParse(value);
+    return null;
   }
 
   JobModel copyWith({
